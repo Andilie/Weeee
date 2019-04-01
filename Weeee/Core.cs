@@ -157,7 +157,6 @@ namespace Weeee
                 httpWebRequest.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/18.17763";
                 httpWebRequest.Accept = "text/html, application/xhtml+xml, application/xml; q=0.9, */*; q=0.8";
                 httpWebRequest.AllowAutoRedirect = false;
-                //httpWebRequest.Headers["Accept-Language"] = "zh-CN,zh;q=0.";
                 httpWebRequest.ContentLength = postData1.Length;
                 httpWebRequest.CookieContainer = new CookieContainer();
                 CookieContainer = httpWebRequest.CookieContainer;
@@ -185,8 +184,9 @@ namespace Weeee
                                 streamReader.Close();
                             }
                             responseStream.Close();
-                            response.Close();
                             response.Dispose();//释放资源
+                            response.Close();
+                          
                         }
                         else
                         {
@@ -220,63 +220,65 @@ namespace Weeee
                 request.Headers.Add("Cookie:" + StrCookie);
                 request.CookieContainer = CookieContainer;
                 request.AllowAutoRedirect = true;
-                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-                if (response.StatusCode == HttpStatusCode.OK)
+                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
                 {
-                    StrCookie = request.CookieContainer.GetCookieHeader(request.RequestUri);
-                    Stream responseStream = response.GetResponseStream();
-                    if (response.Headers["Content-Encoding"] != null && response.Headers["Content-Encoding"].ToLower().Contains("gzip"))
+                    if (response.StatusCode == HttpStatusCode.OK)
                     {
-                        responseStream = new GZipStream(responseStream, CompressionMode.Decompress);
-                    }
-                    StreamReader streamReader = new StreamReader(responseStream, Encoding.GetEncoding("gb2312"));
-                    content = streamReader.ReadToEnd();
-                    var doc = new HtmlDocument();
-                    doc.LoadHtml(content);
-                    //加载选课参数：
-                    HtmlNode form = doc.DocumentNode.SelectSingleNode(".//div[@name='XXXX']");
-
-                    //获取专业
-                    var specialty = form.SelectNodes("//div[@id='XXXX']/a");
-                    SortedList sortedList = new SortedList();
-                    bool oneLoad = true;
-                    foreach (var item in specialty)
-                    {
-                        if (oneLoad)
+                        StrCookie = request.CookieContainer.GetCookieHeader(request.RequestUri);
+                        Stream responseStream = response.GetResponseStream();
+                        if (response.Headers["Content-Encoding"] != null && response.Headers["Content-Encoding"].ToLower().Contains("gzip"))
                         {
-                            oneLoad = false;
-                            continue;
+                            responseStream = new GZipStream(responseStream, CompressionMode.Decompress);
                         }
-                        sortedList.Add(item.Attributes["value"].Value, item.InnerText);//item.NextSibling.InnerText /
-                    }
+                        StreamReader streamReader = new StreamReader(responseStream, Encoding.GetEncoding("gb2312"));
+                        content = streamReader.ReadToEnd();
+                        request.Abort();
+                        streamReader.Close();
+                        response.Dispose();//释放资源
+                        response.Close();
+                        var doc = new HtmlDocument();
+                        doc.LoadHtml(content);
+                        //加载选课参数：
+                        HtmlNode form = doc.DocumentNode.SelectSingleNode(".//div[@name='XXXX']");
 
-                    //获取学院
-                    var xueyuan = form.SelectNodes("//select[@name='XXX']/option");
-                    SortedList sortedList2 = new SortedList();
-                    bool fristLoad = true;
-                    foreach (var item in xueyuan)
-                    {
-                        if (fristLoad)
+                        //获取专业
+                        var specialty = form.SelectNodes("//div[@id='XXXX']/a");
+                        SortedList sortedList = new SortedList();
+                        bool oneLoad = true;
+                        foreach (var item in specialty)
                         {
-                            fristLoad = false;
-                            continue;
+                            if (oneLoad)
+                            {
+                                oneLoad = false;
+                                continue;
+                            }
+                            sortedList.Add(item.Attributes["value"].Value, item.InnerText);//item.NextSibling.InnerText /
                         }
-                        sortedList2.Add(item.Attributes["value"].Value, item.InnerText);
+
+                        //获取学院
+                        var xueyuan = form.SelectNodes("//select[@name='XXX']/option");
+                        SortedList sortedList2 = new SortedList();
+                        bool fristLoad = true;
+                        foreach (var item in xueyuan)
+                        {
+                            if (fristLoad)
+                            {
+                                fristLoad = false;
+                                continue;
+                            }
+                            sortedList2.Add(item.Attributes["value"].Value, item.InnerText);
+                        }
+
+                        SelectClassMenu.LwPageSize = form.SelectSingleNode("//input[@name='XXX']").Attributes["value"].Value;
+                        SelectClassMenu.SpecialtySortedList = sortedList;//(自己)专业列表                                               
+                        SelectClassMenu.College = sortedList2;//学院列表
+
+                        return "成功进入选课模块";
                     }
-
-                    SelectClassMenu.LwPageSize = form.SelectSingleNode("//input[@name='XXX']").Attributes["value"].Value;
-                    SelectClassMenu.SpecialtySortedList = sortedList;//(自己)专业列表                                               
-                    SelectClassMenu.College = sortedList2;//学院列表
-
-                    request.Abort();
-                    streamReader.Close();
-                    response.Close();
-                    response.Dispose();//释放资源
-                    return "成功进入选课模块";
-                }
-                else
-                {
-                    return response.StatusDescription;
+                    else
+                    {
+                        return response.StatusDescription;
+                    }
                 }
             }
             else
@@ -304,38 +306,66 @@ namespace Weeee
             //httpWebRequest.Headers["Accept-Language"] = "zh-CN,zh;q=0.";
             httpWebRequest.ContentLength = postData1.Length;
             httpWebRequest.CookieContainer = CookieContainer;
-            //reCk = httpWebRequest.CookieContainer;
             string retString;
-            Stream requestStream = httpWebRequest.GetRequestStream();
-            requestStream.Write(postData1, 0, postData1.Length);
-            HttpWebResponse response = (HttpWebResponse)httpWebRequest.GetResponse();
-            response.Cookies = httpWebRequest.CookieContainer.GetCookies(httpWebRequest.RequestUri);
-            //CookieCollection cookie = response.Cookies;
-            StrCookie = httpWebRequest.CookieContainer.GetCookieHeader(httpWebRequest.RequestUri);
-            Stream responseStream = response.GetResponseStream();
-            if (response.Headers["Content-Encoding"] != null && response.Headers["Content-Encoding"].ToLower().Contains("gzip"))
+            using (Stream requestStream = httpWebRequest.GetRequestStream())
             {
-                responseStream = new GZipStream(responseStream, CompressionMode.Decompress);
+                requestStream.Write(postData1, 0, postData1.Length);
+                HttpWebResponse response = (HttpWebResponse)httpWebRequest.GetResponse();
+                response.Cookies = httpWebRequest.CookieContainer.GetCookies(httpWebRequest.RequestUri);
+                //CookieCollection cookie = response.Cookies;
+                StrCookie = httpWebRequest.CookieContainer.GetCookieHeader(httpWebRequest.RequestUri);
+                Stream responseStream = response.GetResponseStream();
+                if (response.Headers["Content-Encoding"] != null && response.Headers["Content-Encoding"].ToLower().Contains("gzip"))
+                {
+                    responseStream = new GZipStream(responseStream, CompressionMode.Decompress);
+                }
+                using (StreamReader streamReader = new StreamReader(responseStream, Encoding.GetEncoding("gb2312")))
+                {
+                    retString = streamReader.ReadToEnd();
+                    streamReader.Dispose();
+                    streamReader.Close();
+
+                }
+                responseStream.Dispose();
+                response.Dispose();
+                response.Close();
+
             }
-            StreamReader streamReader = new StreamReader(responseStream, Encoding.GetEncoding("gb2312"));
-            retString = streamReader.ReadToEnd();
+
+            //获取表格内容
             var doc = new HtmlDocument();
             doc.LoadHtml(retString);
             HtmlNode node = doc.DocumentNode;
             var table = node.SelectSingleNode("//table");
-            classList = new List<string>();
-            foreach (HtmlNode item in table.SelectNodes(".//input[@name='XXXXX']"))
+            HtmlNodeCollection tr = table.SelectNodes(".//tr");
+            //classList = new List<string>();
+            //foreach (HtmlNode item in table.SelectNodes(".//input[@name='XXXXX']"))
+            //{
+            //    if (item.Attributes["value"].Value != null)
+            //    {
+            //        Console.WriteLine(item.Attributes["value"].Value);
+            //        classList.Add(item.Attributes["value"].Value);
+            //    }
+            //}
+            int cellSize = 16;//表格列数
+            foreach (var row in tr)
             {
-                if (item.Attributes["value"].Value!=null)
+                foreach (var cell in row.SelectNodes("//td"))
                 {
-                    Console.WriteLine(item.Attributes["value"].Value);
-                    classList.Add(item.Attributes["value"].Value);
-                }
-               
+                    cellSize--;
+                    if (cellSize > 0)
+                    {
+                        Console.WriteLine("cell: " + cell.InnerText);
+                    }
+                    else if (cellSize == 0)
+                    {
+                        cellSize = 16;
+                        Console.WriteLine("-----row-----");
+                    }
 
+                }
             }
-            streamReader.Close();
-            response.Close();
+
         }
     }
 }
